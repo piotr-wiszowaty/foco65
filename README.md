@@ -47,8 +47,8 @@ After initializing interpreter internal state user-defined word
 Generated code is placed into sections which are output in the
 order: `init`, `boot`, `data`, `code` or other - specified by the user.
 
-Example
--------
+Examples
+--------
 
 Atari XL/XE example: display character table as 16x16 array.
 Uses xasm as a backend.
