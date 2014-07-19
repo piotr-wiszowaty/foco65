@@ -20,10 +20,10 @@ OPTIONS:
 Words
 -----
 
-: @ 0= 1- 1+ 2/ 2* 2@ 2! and c! c@ cmove count d- d+ d= do drop dup i j loop
-+loop lshift <= < >= > - + or over rshift rsp sp swap unloop u< u> while <>
-= ! [ ] [code] [end-code] cell cells not [section] variable 2variable
-constant create , c, ,' ' ," " allot lit \ ( recursive [label] * /
+`:` `@` `0=` `1-` `1+` `2/` `2*` `2@` `2!` `and` `c!` `c@` `cmove` `count` `d-` `d+` `d=` `do` `drop` `dup` `i` `j` `loop`
+`+loop` `lshift` `<=` `<` `>=` `>` `-` `+` `or` `over` `rshift` `rsp` `sp` `swap` `unloop` `u<` `u>` `while` `<>`
+`=` `!` `[` `]` `[code]` `[end-code]` `cell` `cells` `not` `[section]` `variable` `2variable`
+`constant` `create` `,` `c,` `,'` `'` `,"` `"` `allot` `lit` `\` `(` `recursive` `[label]` `*` `/`
 
 Internals
 ---------
