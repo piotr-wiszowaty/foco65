@@ -4,8 +4,6 @@ foco65
 Forth cross-compiler targeting 6502 processors. It needs a 6502
 cross-assembler as a backend.
 
-foco65 should be assembler-neutral, but ...
-
 Usage
 -----
 
