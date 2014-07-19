@@ -1,0 +1,1679 @@
+#!/usr/bin/env python
+
+# foco65
+# Copyright (C) 2014  Piotr Wiszowaty
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see {http://www.gnu.org/licenses/}.
+
+import argparse
+import re
+import sys
+
+#####
+
+class StackUnderflow(Exception):
+    def __init__(self, text, line, column):
+        self.text = text
+        self.line = line
+        self.column = column
+
+    def __str__(self):
+        return "stack underflow (%d,%d): %s" % (self.line, self.column, self.text)
+
+
+class StackNotEmpty(Exception):
+    def __init__(self, line, column):
+        self.line = line
+        self.column = column
+
+    def __str__(self):
+        return "stack not empty (%d,%d)" % (self.line, self.column)
+
+
+class ParseError(Exception):
+    def __init__(self, message, line, column):
+        self.message = message
+        self.line = line
+        self.column = column
+
+    def __str__(self):
+        return "%s at line %d column %d" % (self.message, self.line, self.column)
+
+
+class UnknownWord(ParseError):
+    def __init__(self, token):
+        ParseError.__init__(self, "unknown word '%s'" % token.text, token.line, token.column)
+
+
+class UnexpectedEndOfStream(ParseError):
+    def __init__(self, line, column):
+        ParseError.__init__(self, "unexpected end of input", line, column)
+
+#####
+
+class Token:
+    def __init__(self, text, line, column):
+        self.text = text
+        self.line = line
+        self.column = column
+
+    def __eq__(self, other):
+        return self.text == other
+
+    def __str__(self):
+        return "'%s' %d,%d" % (self.text, self.line, self.column)
+
+    def endswith(self, s):
+        return self.text.endswith(s)
+
+    def replace(self, s_from, s_to):
+        return self.text.replace(s_from, s_to)
+
+    def canon(self):
+        return self.text.replace("-", "_").replace("?", "_is_")
+
+#####
+
+class Input:
+    WHITESPACE = " \t\n"
+    EOL = "\n"
+
+    def __init__(self, text):
+        self.text = text
+        self.offset = 0
+        self.line = 1
+        self.column = 1
+
+    def __iter__(self):
+        return self
+
+    def mark_start(self):
+        self._mark_start = self.offset
+
+    def mark_end(self):
+        self._mark_end = self.offset
+
+    def marked(self):
+        return self.text[self._mark_start:self._mark_end]
+
+    def end(self):
+        return self.offset >= len(self.text)
+
+    def current_char(self):
+        if self.end(): return None
+        return self.text[self.offset]
+
+    def next_char(self):
+        if self.end():
+            raise UnexpectedEndOfStream(self.line, self.column)
+        c = self.text[self.offset]
+        self.offset += 1
+        if c in self.EOL:
+            self.line += 1
+            self.column = 1
+        else:
+            self.column += 1
+        return c
+
+    def skip_to_eol(self):
+        while self.current_char() != "\n":
+            self.next_char()
+
+    def next(self):
+        while self.current_char() in self.WHITESPACE:
+            self.next_char()
+            if self.end(): return None
+        if self.end(): raise StopIteration
+        line, column, start = self.line, self.column, self.offset
+        while self.current_char() not in self.WHITESPACE:
+            self.next_char()
+        return Token(self.text[start:self.offset], line, column)
+
+#####
+
+class Code:
+    def __init__(self, code, section):
+        self.code = code
+        self.section = section
+
+    def __str__(self):
+        return self.code[1:] + "\n"
+
+#####
+
+class Word:
+    def __init__(self, name, section, code="", label=None):
+        self.name = name
+        self.section = section
+        self.thread = ["enter"]
+        self.code = code
+        if label:
+            self.label = label
+        else:
+            self.label = name
+        self.recursive = False
+
+    def __str__(self):
+        if self.code:
+            return "%s\n dta a(*+2)\n%s" % (self.label, self.code)
+        else:
+            s = "\n".join(map(lambda l: " dta a(%s)" % l, self.thread))
+            return "%s\n%s\n" % (self.label, s)
+
+    def add(self, label):
+        self.thread.append(label)
+
+    def ip(self):
+        return len(self.thread)
+
+#####
+
+class Constant:
+    def __init__(self, name, label, value, section):
+        self.name = name
+        self.label = label
+        self.value = value
+        self.section = section
+
+    def __str__(self):
+        return "%s\n dta a(const),a(%s)\n" % (self.label, self.value)
+
+#####
+
+class BranchTarget:
+    def __init__(self, ip):
+        self.ip = ip
+        self.label = None
+
+    def update(self, ip):
+        if ip > self.ip:
+            self.label = "*+%d" % (2 * (ip - self.ip))
+        elif ip < self.ip:
+            self.label = "*-%d" % (2 * (self.ip - ip))
+
+    def __str__(self):
+        return self.label
+
+#####
+
+class Words:
+    def __init__(self):
+        self.lst = []
+        self.aliases = {"cells": "2*", "cell": "2*", "not": "0="}
+
+    def __iter__(self):
+        return iter(self.lst)
+
+    def find(self, name):
+        if self.aliases.has_key(name):
+            name = self.aliases[name]
+        for word in self.lst:
+            if word.name == name:
+                return word
+        return None
+
+    def add(self, word):
+        self.lst.insert(0, word)
+
+#####
+
+class Forth:
+    def __init__(self, sections):
+        self.words = Words()
+        self.items = []
+        self.sections = sections
+        self.section = "code"
+        self.stack = []
+        self.do_loop_stack = []
+        self.int_prog = re.compile("-?[0-9]+")
+        self.hex_prog = re.compile("\$[0-9A-Fa-f]+")
+        self.state = None
+
+    def push(self, item):
+        self.stack.append(item)
+
+    def pop(self, token):
+        if not self.stack:
+            raise StackUnderflow(token.text, token.line, token.column)
+        else:
+            return self.stack.pop()
+
+    def push_do_loop(self):
+        self.do_loop_stack.append([])
+
+    def push_do_loop_leave(self, branch_target):
+        self.do_loop_stack[-1].append(branch_target)
+
+    def pop_do_loop(self, token):
+        if not self.do_loop_stack:
+            raise StackUnderflow(token.text, token.line, token.column)
+        else:
+            return self.do_loop_stack.pop()
+
+    def add_word(self, word):
+        self.words.add(word)
+        self.items.append(word)
+
+    def isnumber(self, token):
+        return token is not None and \
+                (self.int_prog.match(token.text) or \
+                 self.hex_prog.match(token.text))
+
+    def tonumber(self, x):
+        if type(x) == int:
+            return x
+        elif self.hex_prog.match(x):
+            return int(x[1:], 16)
+        else:
+            return int(x)
+
+    def next(self):
+        token = self.input.next()
+        if token == "\\":
+            self.input.skip_to_eol()
+            return self.next()
+        elif token == "(":
+            while not token.endswith(")"):
+                token = self.input.next()
+            return self.next()
+        else:
+            return token
+
+    def set_state(self, state):
+        self.state = state
+
+    def parse_input(self, input):
+        self.input = input
+        self.set_state("interpret")
+        while not self.input.end():
+            if self.state == "interpret":
+                self.interpret()
+            elif self.state == "compile":
+                self.compile(self.word)
+
+    def interpret(self):
+        token = self.next()
+        if token == ":":
+            token = self.next()
+            self.word = Word(token.text, self.section, label=token.canon())
+            self.set_state("compile")
+        elif token == "[code]":
+            self.items.append(self.parse_code())
+        elif token == "[section]":
+            self.parse_section()
+        elif token == "variable":
+            self.parse_variable(1)
+        elif token == "2variable":
+            self.parse_variable(2)
+        elif token == "constant":
+            self.parse_constant(token)
+        elif token == "create":
+            self.parse_create()
+        elif token == ",":
+            self.parse_comma(token)
+        elif token == "c,":
+            self.parse_c_comma(token)
+        elif token == ',"':
+            self.parse_comma_doublequote()
+        elif token == ",'":
+            self.parse_comma_quote(True)
+        elif token == "'":
+            self.parse_comma_quote(False)
+        elif token == "allot":
+            self.parse_allot(token)
+        elif token == "+":
+            x2 = self.pop(token)
+            x1 = self.pop(token)
+            self.push(x1 + x2)
+        elif token == "-":
+            x2 = self.pop(token)
+            x1 = self.pop(token)
+            self.push(x1 - x2)
+        elif token == "*":
+            x2 = self.pop(token)
+            x1 = self.pop(token)
+            self.push(x1 * x2)
+        elif token == "cells":
+            x = self.pop(token)
+            self.push(2 * x)
+        elif token == "/":
+            x2 = self.pop(token)
+            x1 = self.pop(token)
+            self.push(x1 / x2)
+        elif token == "]":
+            self.word.add("lit")
+            self.word.add(str(self.pop(token)))
+            self.set_state("compile")
+        elif self.isnumber(token):
+            self.push(self.tonumber(token.text))
+        elif token is not None:
+            word = self.words.find(token.text)
+            if word is not None:
+                if isinstance(word, Constant):
+                    self.push(self.tonumber(word.value))
+                else:
+                    raise ParseError("not a constant '%s'" % token, token.line, token.column)
+            else:
+                raise UnknownWord(token)
+
+    def compile(self, word):
+        if self.input.end():
+            raise UnexpectedEndOfStream(self.input.line, self.input.column)
+        token = self.next()
+        if token == ";":
+            word.add("exit")
+            self.add_word(word)
+            self.set_state("interpret")
+        elif token == "recursive":
+            word.recursive = True
+        elif token == "[label]":
+            token = self.next()
+            word.label = token.text
+        elif token == "[code]":
+            word.code = self.parse_code()
+        elif token == "begin":
+            self.push(word.ip())
+        elif token == "again":
+            word.add("branch")
+            begin_ip = self.pop(token)
+            target = BranchTarget(word.ip())
+            target.update(begin_ip)
+            word.add(target)
+        elif token == "until":
+            word.add("until")
+            begin_ip = self.pop(token)
+            target = BranchTarget(word.ip())
+            target.update(begin_ip)
+            word.add(target)
+        elif token == "if":
+            word.add("_if")
+            target = BranchTarget(word.ip())
+            word.add(target)
+            self.push(target)
+        elif token == "else":
+            word.add("branch")
+            target1 = BranchTarget(word.ip())
+            word.add(target1)
+            target0 = self.pop(token)
+            target0.update(word.ip())
+            self.push(target1)
+        elif token == "then":
+            target = self.pop(token)
+            target.update(word.ip())
+        elif token == "while":
+            word.add("while")
+            target = BranchTarget(word.ip())
+            word.add(target)
+            self.push(target)
+        elif token == "repeat":
+            word.add("branch")
+            target1 = self.pop(token)
+            begin_ip = self.pop(token)
+            target0 = BranchTarget(word.ip())
+            target0.update(begin_ip)
+            word.add(target0)
+            target1.update(word.ip())
+        elif token == "[":
+            self.set_state("interpret")
+        elif token == "do":
+            word.add("do")
+            self.push(word.ip())
+            self.push_do_loop()
+        elif token == "loop" or token == "+loop":
+            word.add(token.text.replace("+", "plus_"))
+            do_ip = self.pop(token)
+            target = BranchTarget(word.ip())
+            target.update(do_ip)
+            word.add(target)
+            for leave in self.pop_do_loop(token):
+                leave.update(word.ip())
+        elif token == "leave":
+            word.add("unloop")
+            word.add("branch")
+            target = BranchTarget(word.ip())
+            word.add(target)
+            self.push_do_loop_leave(target)
+        elif token == "lit":
+            word.add("lit")
+            token = self.next()
+            word.add(token.text)
+        else:
+            if word.recursive and token == word.name:
+                subword = word
+            else:
+                subword = self.words.find(token.text)
+            if subword is not None:
+                word.add(subword.label)
+            else:
+                if self.isnumber(token):
+                    word.add("lit")
+                    word.add(token.text)
+                else:
+                    raise UnknownWord(token)
+
+    def parse_code(self):
+        self.input.mark_start()
+        while True:
+            self.input.mark_end()
+            token = self.next()
+            if token == "[end-code]":
+                return Code(self.input.marked(), self.section)
+
+    def parse_section(self):
+        token = self.next()
+        self.section = token.text
+
+    def parse_variable(self, size):
+        token = self.next()
+        name = token.text
+        label = token.canon()
+        value = "var_" + token.canon()
+        word = Constant(name, label, value, self.section)
+        self.add_word(word)
+        if size == 1:
+            self.items.append(Code("\n%s\n dta a(0)\n" % value, "data"))
+        elif size == 2:
+            self.items.append(Code("\n%s\n dta a(0),a(0)\n" % value, "data"))
+
+    def parse_constant(self, token):
+        token = self.next()
+        num = self.pop(token)
+        word = Constant(token.text, token.canon(), num, self.section)
+        self.add_word(word)
+
+    def parse_create(self):
+        token = self.next()
+        name = token.text
+        label = token.canon()
+        value = "var_" + token.canon()
+        word = Constant(name, label, value, self.section)
+        self.add_word(word)
+        self.items.append(Code("\n%s" % value, "data"))
+
+    def parse_allot(self, token):
+        count = self.pop(token)
+        zeros = ",".join(["0"] * count)
+        self.items.append(Code("\n dta %s" % zeros, "data"))
+
+    def parse_comma(self, token):
+        item = Code("\n dta a(%d)" % self.pop(token), "data")
+        self.items.append(item)
+
+    def parse_c_comma(self, token):
+        item = Code("\n dta %d" % self.pop(token), "data")
+        self.items.append(item)
+
+    def parse_comma_doublequote(self):
+        # allocate ASCII counted string
+        self.input.mark_start()
+        while True:
+            token = self.next()
+            if token.endswith('"'):
+                self.input.mark_end()
+                text = self.input.marked()[1:-1]
+                item = Code("\n dta %d,c'%s'" % (len(text), text), "data")
+                self.items.append(item)
+                break
+
+    def parse_comma_quote(self, counted):
+        # allocate ANTIC string
+        self.input.mark_start()
+        while True:
+            token = self.next()
+            if token.endswith("'") or token.endswith("'*"):
+                self.input.mark_end()
+                if token.endswith("*"):
+                    text = self.input.marked()[1:-2]
+                    inverse = "*"
+                else:
+                    text = self.input.marked()[1:-1]
+                    inverse = ""
+                if counted:
+                    count = "%d," % len(text)
+                else:
+                    count = ""
+                item = Code("\n dta %sd'%s'%s" % (count, text, inverse), "data")
+                self.items.append(item)
+                break
+
+    def generate_output(self):
+        if self.stack:
+            raise StackNotEmpty(self.input.line, self.input.column)
+        section_outputs = []
+        for section in self.sections:
+            item_outputs = map(str, filter(lambda i: i.section == section, self.items))
+            section_outputs.append("; section %s\n" % section)
+            section_outputs.append("\n".join(item_outputs))
+        return "\n".join(section_outputs)
+
+#####
+
+boot_text = """
+[section] boot
+
+[code]
+ip     equ $80
+w      equ $82
+z      equ $84
+cntr   equ $86
+tmp    equ $88
+tmp2   equ $8A
+pstack equ %(pstack_bottom)s
+
+boot
+ ldx #%(pstack_size)d
+ lda #<[main+2]
+ sta ip
+ lda #>[main+2]
+ sta ip+1
+ jmp next
+
+; push ip
+; ip := w+2
+; jmp next
+enter
+ lda ip
+ pha
+ lda ip+1
+ pha
+ lda #2
+ clc
+ adc w
+ sta ip
+ lda #0
+ adc w+1
+ sta ip+1
+ jmp next
+
+; pop ip
+; jmp next
+exit
+ dta a(*+2)
+ pla
+ sta ip+1
+ pla
+ sta ip
+;jmp next
+
+; w := (ip)
+; ip := ip+2
+; z := (w)
+; jmp (z)
+next
+ ldy #0
+ lda (ip),y
+ sta w
+ iny
+ lda (ip),y
+ sta w+1
+ lda #2
+ clc
+ adc ip
+ sta ip
+ lda #0
+ adc ip+1
+ sta ip+1
+ ldy #0
+ lda (w),y
+ sta z
+ iny
+ lda (w),y
+ sta z+1
+ jmp (z)
+
+; push (ip)
+; ip := ip+2
+lit
+ dta a(*+2)
+ ldy #1
+ lda (ip),y
+ dey
+ dex
+ sta pstack,x
+ lda (ip),y
+ dex
+ sta pstack,x
+ lda #2
+ clc
+ adc ip
+ sta ip
+ lda #0
+ adc ip+1
+ sta ip+1
+ jmp next
+
+const
+ ldy #3
+ lda (w),y
+ dey
+ dex
+ sta pstack,x
+ lda (w),y
+ dex
+ sta pstack,x
+ jmp next
+
+_if
+ dta a(*+2)
+ lda pstack,x
+ inx
+ ora pstack,x
+ bne _if_t
+_if_f
+ ldy #0
+ lda (ip),y
+ sta w
+ iny
+ lda (ip),y
+ sta ip+1
+ lda w
+ sta ip
+ inx
+ jmp next
+_if_t
+ lda #2
+ clc
+ adc ip
+ sta ip
+ lda #0
+ adc ip+1
+ sta ip+1
+ inx
+ jmp next
+
+branch
+ dta a(*+2)
+ ldy #0
+ lda (ip),y
+ sta w
+ iny
+ lda (ip),y
+ sta ip+1
+ lda w
+ sta ip
+ jmp next
+
+until
+ dta a(*+2)
+ lda pstack,x
+ inx
+ ora pstack,x
+ bne until_end
+until_repeat
+ inx
+ ; ip := (ip)
+ ldy #0
+ lda (ip),y
+ iny
+ sta w
+ lda (ip),y
+ sta ip+1
+ lda w
+ sta ip
+ jmp next
+until_end
+ inx
+ ; ip := ip+2
+ clc
+ lda #2
+ adc ip
+ sta ip
+ lda #0
+ adc ip+1
+ sta ip+1
+ jmp next
+
+[end-code]
+"""
+
+basewords_text = """
+[section] code
+
+: drop
+[code]
+ inx
+ inx
+ jmp next
+[end-code] ;
+
+: while
+[code]
+ lda pstack,x
+ inx
+ ora pstack,x
+ beq while_end
+ inx
+ lda #2
+ clc
+ adc ip
+ sta ip
+ lda #0
+ adc ip+1
+ sta ip+1
+ jmp next
+while_end
+ inx
+ ldy #0
+ lda (ip),y
+ iny
+ sta w
+ lda (ip),y
+ sta ip+1
+ lda w
+ sta ip
+ jmp next
+[end-code] ;
+
+: @
+[label] fetch
+[code]
+ lda pstack,x
+ inx
+ sta w
+ lda pstack,x
+ sta w+1
+ ldy #1
+ lda (w),y
+ sta pstack,x
+ dey
+ lda (w),y
+ dex
+ sta pstack,x
+ jmp next
+[end-code] ;
+
+: c@
+[label] c_fetch
+[code]
+ lda pstack,x
+ inx
+ sta w
+ lda pstack,x
+ sta w+1
+ lda #0
+ sta pstack,x
+ ldy #0
+ lda (w),y
+ dex
+ sta pstack,x
+ jmp next
+[end-code] ;
+
+: !         ( x addr -- )
+[label] store
+[code]
+ lda pstack,x
+ inx
+ sta w
+ lda pstack,x
+ inx
+ sta w+1
+ lda pstack,x
+ inx
+ ldy #0
+ sta (w),y
+ iny
+ lda pstack,x
+ inx
+ sta (w),y
+ jmp next
+[end-code] ;
+
+: c!
+[label] c_store
+[code]
+ lda pstack,x
+ inx
+ sta w
+ lda pstack,x
+ inx
+ sta w+1
+ lda pstack,x
+ inx
+ inx
+ ldy #0
+ sta (w),y
+ jmp next
+[end-code] ;
+
+: +         ( n1|u1 n2|u2 -- n3|u3 )
+[label] plus
+[code]
+ lda pstack,x
+ inx
+ ldy pstack,x
+ inx
+ clc
+ adc pstack,x
+ sta pstack,x
+ tya
+ adc pstack+1,x
+ sta pstack+1,x
+ jmp next
+[end-code] ;
+
+\ n1|u1 - n2|u2
+
+: -         ( n1|u1 n2|u2 -- n3|u3 )
+[label] minus
+[code]
+ sec
+ lda pstack+2,x
+ sbc pstack+0,x
+ sta pstack+2,x
+ inx
+ lda pstack+2,x
+ sbc pstack+0,x
+ sta pstack+2,x
+ inx
+ jmp next
+[end-code] ;
+
+: 1+
+[label] one_plus
+[code]
+ clc
+ lda #1
+ adc pstack,x
+ sta pstack,x
+ lda #0
+ adc pstack+1,x
+ sta pstack+1,x
+ jmp next
+[end-code] ;
+
+: 1-
+[label] one_minus
+[code]
+ sec
+ lda pstack,x
+ sbc #1
+ sta pstack,x
+ lda pstack+1,x
+ sbc #0
+ sta pstack+1,x
+ jmp next
+[end-code] ;
+
+: count     ( addr1 -- addr2 u )
+[code]
+ lda pstack,x
+ sta w
+ clc
+ adc #1
+ sta pstack,x
+ lda pstack+1,x
+ sta w+1
+ adc #0
+ sta pstack+1,x
+ lda #0
+ dex
+ sta pstack,x
+ ldy #0
+ lda (w),y
+ dex
+ sta pstack,x
+ jmp next
+[end-code] ;
+
+: cmove     ( c-addr1 c-addr2 u -- )
+[code]
+ lda pstack,x
+ inx
+ sta cntr
+ lda pstack,x
+ inx
+ sta cntr+1
+ lda pstack,x
+ inx
+ sta w
+ lda pstack,x
+ inx
+ sta w+1
+ lda pstack,x
+ inx
+ sta z
+ lda pstack,x
+ inx
+ sta z+1
+ ldy #0
+cmove_loop
+ lda (z),y
+ sta (w),y
+ iny
+ cpy cntr
+ bne cmove_loop
+ lda #0
+ sta cntr
+ ldy cntr+1
+ beq cmove_end
+ dey
+ sty cntr+1
+ jmp cmove_loop
+cmove_end
+ jmp next
+[end-code] ;
+
+: dup       ( x -- x x )
+[code]
+ ldy pstack,x
+ lda pstack+1,x
+ dex
+ sta pstack,x
+ tya
+ dex
+ sta pstack,x
+ jmp next
+[end-code] ;
+
+: swap
+[code]
+ ldy pstack,x
+ lda pstack+2,x
+ sta pstack,x
+ tya
+ sta pstack+2,x
+ ldy pstack+1,x
+ lda pstack+3,x
+ sta pstack+1,x
+ tya
+ sta pstack+3,x
+ jmp next
+[end-code] ;
+
+: over      ( x1 x2 -- x1 x2 x1 )
+[code]
+ lda pstack+3,x
+ dex
+ sta pstack,x
+ lda pstack+3,x
+ dex
+ sta pstack,x
+ jmp next
+[end-code] ;
+
+: and       ( x1 x2 -- x3 )
+[code]
+ lda pstack,x
+ inx
+ ldy pstack,x
+ inx
+ and pstack,x
+ sta pstack,x
+ tya
+ and pstack+1,x
+ sta pstack+1,x
+ jmp next
+[end-code] ;
+
+: or        ( x1 x2 -- x3 )
+[code]
+ lda pstack,x
+ inx
+ ldy pstack,x
+ inx
+ ora pstack,x
+ sta pstack,x
+ tya
+ ora pstack+1,x
+ sta pstack+1,x
+ jmp next
+[end-code] ;
+
+: rshift    ( x1 u -- x2 )
+[code]
+ ldy pstack,x
+ inx
+ inx
+ lda pstack,x
+rshift_loop
+ cpy #0
+ beq rshift_end
+ dey
+ lsr pstack+1,x
+ ror @
+ jmp rshift_loop
+rshift_end
+ sta pstack,x
+ jmp next
+[end-code] ;
+
+: lshift    ( x1 u -- x2 )
+[code]
+ ldy pstack,x
+ inx
+ inx
+ lda pstack,x
+lshift_loop
+ cpy #0
+ beq lshift_end
+ dey
+ asl @
+ rol pstack+1,x
+ jmp lshift_loop
+lshift_end
+ sta pstack,x
+ jmp next
+[end-code] ;
+
+\ n2-n1 : n2<n1  => N eor V = 1
+\         n2>=n1 => N eor V = 0
+
+: >         ( n1 n2 -- flag )
+[label] greater_than
+[code]
+ sec
+ lda pstack,x
+ inx
+ sbc pstack+1,x
+ lda pstack,x
+ inx
+ sbc pstack+1,x
+ bvc gt_v
+ eor #$80
+gt_v
+ bpl gt_f
+gt_t
+ lda #$FF
+ sta pstack,x
+ sta pstack+1,x
+ jmp next
+gt_f
+ lda #$00
+ sta pstack,x
+ sta pstack+1,x
+ jmp next
+[end-code] ;
+
+\ n2-n1 : n2<n1  => N eor V = 1
+\         n2>=n1 => N eor V = 0
+
+: <=        ( n1 n2 -- flag )
+[label] less_than_or_equal
+[code]
+ sec
+ lda pstack,x
+ inx
+ sbc pstack+1,x
+ lda pstack,x
+ inx
+ sbc pstack+1,x
+ bvc lteq_v
+ eor #$80
+lteq_v
+ bmi lteq_f
+lteq_t
+ lda #$FF
+ sta pstack,x
+ sta pstack+1,x
+ jmp next
+lteq_f
+ lda #$00
+ sta pstack,x
+ sta pstack+1,x
+ jmp next
+[end-code] ;
+
+\ n1-n2 : n1<n2  => N eor V = 1
+\         n1>=n2 => N eor V = 0
+
+: <         ( n1 n2 -- flag )
+[label] less_than
+[code]
+ sec
+ lda pstack+2,x
+ sbc pstack+0,x
+ lda pstack+3,x
+ sbc pstack+1,x
+ bvc lt_v
+ eor #$80
+lt_v
+ bpl lt_f
+lt_t
+ lda #$FF
+lt_set
+ inx
+ inx
+ sta pstack,x
+ sta pstack+1,x
+ jmp next
+lt_f
+ lda #$00
+ beq lt_set
+[end-code] ;
+
+\ n1-n2 : n1<n2  => N eor V = 1
+\         n1>=n2 => N eor V = 0
+
+: >=        ( n1 n2 -- flag )
+[label] greater_than_or_equal
+[code]
+ sec
+ lda pstack+2,x
+ sbc pstack+0,x
+ lda pstack+3,x
+ sbc pstack+1,x
+ bvc gteq_v
+ eor #$80
+gteq_v
+ bmi gteq_f
+gteq_t
+ lda #$FF
+gteq_set
+ inx
+ inx
+ sta pstack,x
+ sta pstack+1,x
+ jmp next
+gteq_f
+ lda #$00
+ beq gteq_set
+[end-code] ;
+
+\ u2-u1 : u2<u1  => C = 0
+\         u2>=u1 => C = 1
+
+: u>        ( u1 u2 -- flag )
+[label] unsigned_greater_than
+[code]
+ sec
+ lda pstack+0,x
+ sbc pstack+2,x
+ inx
+ lda pstack+0,x
+ sbc pstack+2,x
+ inx
+ bcc ugt_t
+ lda #$00
+ugt_set
+ sta pstack+0,x
+ sta pstack+1,x
+ jmp next
+ugt_t
+ lda #$FF
+ bne ugt_set
+[end-code] ;
+
+\ u1-u2 : u1<u2  => C = 0
+\         u1>=u2 => C = 1
+
+: u<        ( u1 u2 -- flag )
+[label] unsigned_less_than
+[code]
+ sec
+ lda pstack+2,x
+ sbc pstack+0,x
+ inx
+ lda pstack+2,x
+ sbc pstack+0,x
+ inx
+ bcc ult_t
+ lda #$00
+ult_set
+ sta pstack+0,x
+ sta pstack+1,x
+ jmp next
+ult_t
+ lda #$FF
+ bne ult_set
+[end-code] ;
+
+: =         ( x1 x2 -- flag )
+[label] equals
+[code]
+ lda pstack,x
+ cmp pstack+2,x
+ bne eq_f
+ lda pstack+1,x
+ cmp pstack+3,x
+ bne eq_f
+eq_t
+ lda #$FF
+ bne eq_end
+eq_f
+ lda #0
+eq_end
+ inx
+ inx
+ sta pstack,x
+ sta pstack+1,x
+ jmp next
+[end-code] ;
+
+: <>        ( x1 x2 -- flag )
+[label] not_equals
+[code]
+ lda pstack,x
+ cmp pstack+2,x
+ bne neq_t
+ lda pstack+1,x
+ cmp pstack+3,x
+ bne neq_t
+neq_f
+ lda #$00
+ beq neq_end
+neq_t
+ lda #$FF
+neq_end
+ inx
+ inx
+ sta pstack,x
+ sta pstack+1,x
+ jmp next
+[end-code] ;
+
+: 2!        ( x1 x2 addr -- )
+[label] two_store
+[code]
+ lda pstack,x
+ inx
+ sta w
+ lda pstack,x
+ inx
+ sta w+1
+ ldy #0
+ lda pstack,x
+ inx
+ sta (w),y
+ iny
+ lda pstack,x
+ inx
+ sta (w),y
+ iny
+ lda pstack,x
+ inx
+ sta (w),y
+ iny
+ lda pstack,x
+ inx
+ sta (w),y
+ jmp next
+[end-code] ;
+
+: 2@        ( addr -- x1 x2 )
+[label] two_fetch
+[code]
+ lda pstack,x
+ inx
+ sta w
+ lda pstack,x
+ sta w+1
+ ldy #3
+ lda (w),y
+ dey
+ sta pstack,x
+ lda (w),y
+ dey
+ dex
+ sta pstack,x
+ lda (w),y
+ dey
+ dex
+ sta pstack,x
+ lda (w),y
+ dex
+ sta pstack,x
+ jmp next
+[end-code] ;
+
+: d=        ( d1 d2 -- flag )
+[label] d_equ
+[code]
+ lda pstack+0,x
+ cmp pstack+4,x
+ bne d_equ_f
+ lda pstack+1,x
+ cmp pstack+5,x
+ bne d_equ_f
+ lda pstack+2,x
+ cmp pstack+6,x
+ bne d_equ_f
+ lda pstack+3,x
+ cmp pstack+7,x
+ bne d_equ_f
+ lda #$FF
+d_equ_end
+ inx
+ inx
+ inx
+ inx
+ inx
+ inx
+ sta pstack+0,x
+ sta pstack+1,x
+ jmp next
+d_equ_f
+ lda #$00
+ jmp d_equ_end
+[end-code] ;
+
+: d+        ( d1 d2 -- d3 )
+[label] d_plus
+[code]
+ clc
+ lda pstack+2,x
+ adc pstack+6,x
+ sta pstack+6,x
+ lda pstack+3,x
+ adc pstack+7,x
+ sta pstack+7,x
+ lda pstack+0,x
+ adc pstack+4,x
+ sta pstack+4,x
+ lda pstack+1,x
+ adc pstack+5,x
+ sta pstack+5,x
+ inx
+ inx
+ inx
+ inx
+ jmp next
+[end-code] ;
+
+: d-        ( d1 d2 -- d3 )
+[label] d_minus
+[code]
+ sec
+ lda pstack+6,x
+ sbc pstack+2,x
+ sta pstack+6,x
+ lda pstack+7,x
+ sbc pstack+3,x
+ sta pstack+7,x
+ lda pstack+4,x
+ sbc pstack+0,x
+ sta pstack+4,x
+ lda pstack+5,x
+ sbc pstack+1,x
+ sta pstack+5,x
+ inx
+ inx
+ inx
+ inx
+ jmp next
+[end-code] ;
+
+: sp
+[code]
+ txa
+ tay
+ lda #0
+ dex
+ sta pstack,x
+ tya
+ dex
+ sta pstack,x
+ jmp next
+[end-code] ;
+
+: rsp
+[code]
+ txa
+ tay
+ lda #0
+ dey
+ sta pstack,y
+ tsx
+ txa
+ dey
+ sta pstack,y
+ tya
+ tax
+ jmp next
+[end-code] ;
+
+: 0=
+[label] zero_eq
+[code]
+ lda pstack,x
+ ora pstack+1,x
+ beq zero_eq_t
+zero_eq_f
+ lda #$00
+zero_eq_set
+ sta pstack+1,x
+ sta pstack,x
+ jmp next
+zero_eq_t
+ lda #$FF
+ bne zero_eq_set
+[end-code] ;
+
+: do
+[code]
+ lda pstack,x   ; index:lo
+ inx
+ pha
+ lda pstack,x   ; index:hi
+ inx
+ pha
+ lda pstack,x   ; limit:lo
+ inx
+ pha
+ lda pstack,x   ; limit:hi
+ inx
+ pha
+ jmp next
+[end-code] ;
+
+: loop
+[code]
+ pla
+ sta z+1        ; limit:hi
+ pla
+ sta z          ; limit:lo
+ pla
+ sta w+1        ; index:hi
+ pla
+ sta w          ; index:lo
+ ; index := index+1
+ clc
+ lda #1
+ adc w
+ sta w
+ lda #0
+ adc w+1
+ sta w+1
+ ; limit=index?
+ lda w
+ cmp z
+ bne loop_again
+ lda w+1
+ cmp z+1
+ beq loop_end
+loop_again
+ lda w          ; index:lo
+ pha
+ lda w+1        ; index:hi
+ pha
+ lda z          ; limit:lo
+ pha
+ lda z+1        ; limit:hi
+ pha
+ ; ip := (ip)
+ ldy #0
+ lda (ip),y
+ sta w
+ iny
+ lda (ip),y
+ sta ip+1
+ lda w
+ sta ip
+ jmp next
+loop_end
+ ; ip := ip+2
+ clc
+ lda #2
+ adc ip
+ sta ip
+ lda #0
+ adc ip+1
+ sta ip+1
+ jmp next
+[end-code] ;
+
+: +loop
+[label] plus_loop
+[code]
+ pla
+ sta z+1        ; limit:hi
+ pla
+ sta z          ; limit:lo
+ pla
+ sta w+1        ; index:hi
+ pla
+ sta w          ; index:lo
+ ; tmp := index - limit
+ sec
+ sbc z
+ sta tmp
+ lda w+1
+ sbc z+1
+ sta tmp+1
+ ; tmp2 := index - limit + n
+ clc
+ lda tmp
+ adc pstack,x
+ sta tmp2
+ lda tmp+1
+ adc pstack+1,x
+ sta tmp2+1
+ ; index := index+n
+ clc
+ lda pstack,x
+ inx
+ adc w
+ sta w
+ lda pstack,x
+ inx
+ adc w+1
+ sta w+1
+ ; sgn(index-limit) <> sgn(index-limit+n) ?
+ lda tmp+1
+ eor tmp2+1
+ bmi plus_loop_end
+plus_loop_again
+ lda w          ; index:lo
+ pha
+ lda w+1        ; index:hi
+ pha
+ lda z          ; limit:lo
+ pha
+ lda z+1        ; limit:hi
+ pha
+ ; ip := (ip)
+ ldy #0
+ lda (ip),y
+ sta w
+ iny
+ lda (ip),y
+ sta ip+1
+ lda w
+ sta ip
+ jmp next
+plus_loop_end
+ ; ip := ip+2
+ clc
+ lda #2
+ adc ip
+ sta ip
+ lda #0
+ adc ip+1
+ sta ip+1
+ jmp next
+[end-code] ;
+
+: i
+[code]
+ txa
+ tay
+ tsx
+ lda $100+3,x   ; index:hi
+ dey
+ sta pstack,y
+ lda $100+4,x   ; index:lo
+ dey
+ sta pstack,y
+ tya
+ tax
+ jmp next
+[end-code] ;
+
+: j
+[code]
+ txa
+ tay
+ tsx
+ lda $100+7,x   ; index:hi
+ dey
+ sta pstack,y
+ lda $100+8,x   ; index:lo
+ dey
+ sta pstack,y
+ tya
+ tax
+ jmp next
+[end-code] ;
+
+: unloop
+[code]
+ pla
+ pla
+ pla
+ pla
+ jmp next
+[end-code] ;
+
+: 2*
+[label] two_star
+[code]
+ asl pstack,x
+ rol pstack+1,x
+ jmp next
+[end-code] ;
+
+: 2/
+[label] two_slash
+[code]
+ lda pstack+1,x
+ cmp #$80
+ ror pstack+1,x
+ ror pstack,x
+ jmp next
+[end-code] ;
+"""
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--sections", "-s", metavar="STR", default="init,boot,data,code")
+parser.add_argument("--pstack-bottom", "-p", metavar="ADDR", default="$600")
+parser.add_argument("--pstack-size", "-S", metavar="NUM", default=256, type=int)
+parser.add_argument("file", metavar="FILE")
+args = parser.parse_args()
+
+boot_params = {"pstack_bottom": args.pstack_bottom,
+               "pstack_size": args.pstack_size & 0xff}
+
+with open(args.file, "rt") as f:
+    text = f.read()
+
+f = Forth(args.sections.split(","))
+
+try:
+    f.parse_input(Input(boot_text % boot_params))
+    f.parse_input(Input(basewords_text))
+    f.parse_input(Input(text))
+    print f.generate_output()
+except (ParseError, StackUnderflow, StackNotEmpty) as e:
+    sys.stderr.write("error: %s\n" % str(e))
+    sys.exit(1)
