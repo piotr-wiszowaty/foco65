@@ -7,7 +7,9 @@ cross-assembler (e.g. [xasm](http://xasm.atari.org/)) as a backend.
 Usage
 -----
 
+'''sh
 foco65 [OPTIONS] INPUT-FILE
+'''
 
 OPTIONS:
 

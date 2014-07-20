@@ -948,20 +948,27 @@ while_end
  inx
  sta z+1
  ldy #0
-cmove_loop
+ lda cntr+1
+ beq cmove_tail
+cmove_loop_1
+ lda (z),y
+ sta (w),y
+ iny
+ bne cmove_loop_1
+ inc z+1
+ inc w+1
+ dec cntr+1
+ bne cmove_loop_1
+cmove_tail
+ lda cntr
+ beq cmove_done
+cmove_loop_2
  lda (z),y
  sta (w),y
  iny
  cpy cntr
- bne cmove_loop
- lda #0
- sta cntr
- ldy cntr+1
- beq cmove_end
- dey
- sty cntr+1
- jmp cmove_loop
-cmove_end
+ bne cmove_loop_2
+cmove_done
  jmp next
 [end-code] ;
 
