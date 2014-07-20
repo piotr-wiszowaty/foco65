@@ -2,7 +2,7 @@ foco65
 ======
 
 Forth cross-compiler targeting 6502 processors. It needs a 6502
-cross-assembler as a backend.
+cross-assembler (e.g. [xasm](http://xasm.atari.org/)) as a backend.
 
 Usage
 -----
@@ -11,11 +11,15 @@ foco65 [OPTIONS] INPUT-FILE
 
 OPTIONS:
 
--h                           display help
--p ADDR,--pstack-bottom=ADDR parameter stack bottom address
--s SECTS,--sections=SECTS    specify comma separated list of sections
-                             default: init,boot,data,code
--S INT,--pstack-SIZE=INT     parameter stack size
+   -h                           display help
+   -p ADDR,--pstack-bottom=ADDR parameter stack bottom address
+   -s SECTS,--sections=SECTS    specify comma separated list of sections
+                                default: init,boot,data,code
+   -S INT,--pstack-SIZE=INT     parameter stack size
+
+Example:
+
+  <pre>$ foco65 foo.forth > foo.asx</pre>
 
 Words
 -----
