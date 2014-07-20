@@ -11,15 +11,17 @@ foco65 [OPTIONS] INPUT-FILE
 
 OPTIONS:
 
-   -h                           display help
-   -p ADDR,--pstack-bottom=ADDR parameter stack bottom address
-   -s SECTS,--sections=SECTS    specify comma separated list of sections
-                                default: init,boot,data,code
-   -S INT,--pstack-SIZE=INT     parameter stack size
+    -h                           display help
+    -p ADDR,--pstack-bottom=ADDR parameter stack bottom address
+    -s SECTS,--sections=SECTS    specify comma separated list of sections
+                                 default: init,boot,data,code
+    -S INT,--pstack-SIZE=INT     parameter stack size
 
 Example:
 
-  <pre>$ foco65 foo.forth > foo.asx</pre>
+```sh
+$ foco65 foo.forth > foo.asx
+```
 
 Words
 -----
