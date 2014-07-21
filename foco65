@@ -157,22 +157,32 @@ class Word:
         self.name = name
         self.section = section
         self.thread = ["enter"]
+        self.names = []
         self.code = code
         if label:
             self.label = label
         else:
             self.label = name
         self.recursive = False
+        self.used = False
 
     def __str__(self):
-        if self.code:
-            return "%s\n dta a(*+2)\n%s" % (self.label, self.code)
+        if self.used:
+            if self.code:
+                return "%s\n dta a(*+2)\n%s\n" % (self.label, self.code)
+            else:
+                s = "\n".join(map(lambda l: " dta a(%s)" % l, self.thread))
+                return "%s\n%s\n\n" % (self.label, s)
         else:
-            s = "\n".join(map(lambda l: " dta a(%s)" % l, self.thread))
-            return "%s\n%s\n" % (self.label, s)
+            return ""
 
-    def add(self, label):
+    def __iter__(self):
+        return iter(self.names)
+
+    def add(self, label, name=None):
         self.thread.append(label)
+        if name is not None:
+            self.names.append(name)
 
     def ip(self):
         return len(self.thread)
@@ -185,9 +195,16 @@ class Constant:
         self.label = label
         self.value = value
         self.section = section
+        self.used = False
 
     def __str__(self):
-        return "%s\n dta a(const),a(%s)\n" % (self.label, self.value)
+        if self.used:
+            return "%s\n dta a(const),a(%s)\n" % (self.label, self.value)
+        else:
+            return ""
+
+    def __iter__(self):
+        return iter([])
 
 #####
 
@@ -412,7 +429,7 @@ class Forth:
             target = self.pop(token)
             target.update(word.ip())
         elif token == "while":
-            word.add("while")
+            word.add("while", "while")
             target = BranchTarget(word.ip())
             word.add(target)
             self.push(target)
@@ -427,11 +444,11 @@ class Forth:
         elif token == "[":
             self.set_state("interpret")
         elif token == "do":
-            word.add("do")
+            word.add("do", "do")
             self.push(word.ip())
             self.push_do_loop()
         elif token == "loop" or token == "+loop":
-            word.add(token.text.replace("+", "plus_"))
+            word.add(token.text.replace("+", "plus_"), token.text)
             do_ip = self.pop(token)
             target = BranchTarget(word.ip())
             target.update(do_ip)
@@ -439,7 +456,7 @@ class Forth:
             for leave in self.pop_do_loop(token):
                 leave.update(word.ip())
         elif token == "leave":
-            word.add("unloop")
+            word.add("unloop", "unloop")
             word.add("branch")
             target = BranchTarget(word.ip())
             word.add(target)
@@ -447,14 +464,14 @@ class Forth:
         elif token == "lit":
             word.add("lit")
             token = self.next()
-            word.add(token.text)
+            word.add(token.text, token.text)
         else:
             if word.recursive and token == word.name:
                 subword = word
             else:
                 subword = self.words.find(token.text)
             if subword is not None:
-                word.add(subword.label)
+                word.add(subword.label, subword.name)
             else:
                 if self.isnumber(token):
                     word.add("lit")
@@ -547,14 +564,23 @@ class Forth:
                 self.items.append(item)
                 break
 
+    def filter_used_words(self, name):
+        word = self.words.find(name)
+        if word is not None:
+            if not word.used:
+                word.used = True
+                for name in word:
+                    self.filter_used_words(name)
+
     def generate_output(self):
+        self.filter_used_words("main")
         if self.stack:
             raise StackNotEmpty(self.input.line, self.input.column)
         section_outputs = []
         for section in self.sections:
             item_outputs = map(str, filter(lambda i: i.section == section, self.items))
             section_outputs.append("; section %s\n" % section)
-            section_outputs.append("\n".join(item_outputs))
+            section_outputs.append("".join(item_outputs))
         return "\n".join(section_outputs)
 
 #####
