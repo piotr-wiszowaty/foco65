@@ -67,6 +67,8 @@ Atari XL/XE executable skeleton. Uses xasm a a backend.
  org $2000
 [end-code]
 
+[section] code
+
 : main
   begin
     ...
