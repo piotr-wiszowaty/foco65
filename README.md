@@ -58,6 +58,25 @@ order: `init`, `boot`, `data`, `code` or other - specified by the user.
 Examples
 --------
 
+Atari XL/XE executable skeleton. Uses xasm a a backend.
+
+<pre><code>
+[section] init
+
+[code]
+ org $2000
+[end-code]
+
+: main
+  begin
+    ...
+  again ;
+
+[code]
+ run boot
+[end-code]
+</code></pre>
+
 Atari XL/XE example: display character table as 16x16 array.
 Uses xasm as a backend.
 
