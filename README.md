@@ -2,7 +2,7 @@ foco65
 ======
 
 Forth cross-compiler targeting 6502 processors. It needs a 6502
-cross-assembler (e.g. [xasm](http://xasm.atari.org/)) as a backend.
+cross-assembler (e.g. [xasm](https://github.com/pfusik/xasm)) as a backend.
 
 Usage
 -----
