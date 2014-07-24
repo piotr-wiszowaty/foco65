@@ -147,8 +147,11 @@ class Code:
         self.code = code
         self.section = section
 
-    def __str__(self):
-        return self.code[1:] + "\n"
+    def output(self, section):
+        if section == self.section:
+            return self.code[1:] + "\n"
+        else:
+            return ""
 
 #####
 
@@ -166,8 +169,8 @@ class Word:
         self.recursive = False
         self.used = False
 
-    def __str__(self):
-        if self.used:
+    def output(self, section):
+        if self.used and self.section == section:
             if self.code:
                 return "%s\n dta a(*+2)\n%s\n" % (self.label, self.code)
             else:
@@ -189,22 +192,46 @@ class Word:
 
 #####
 
-class Constant:
-    def __init__(self, name, label, value, section):
+class RefBase:
+    def __init__(self, name, label, value, text_section, data_section):
         self.name = name
-        self.label = label
         self.value = value
-        self.section = section
+        self.text_section = text_section
+        self.data_section = data_section
         self.used = False
 
-    def __str__(self):
+    def output(self, section):
         if self.used:
-            return "%s\n dta a(const),a(%s)\n" % (self.label, self.value)
+            if section == self.text_section:
+                return self.text_output
+            elif section == self.data_section:
+                return self.data_output
+            else:
+                return ""
         else:
             return ""
 
     def __iter__(self):
         return iter([])
+
+
+class Constant(RefBase):
+    def __init__(self, name, label, value, text_section, data_section):
+        RefBase.__init__(self, name, label, value, text_section, data_section)
+        self.label = "const_" + label
+        self.text_output = "%s\n dta a(const),a(%s)\n" % (self.label, label)
+        self.data_output = "%s equ %s\n" % (label, self.value)
+
+
+class Variable(RefBase):
+    def __init__(self, name, label, size, text_section, data_section):
+        RefBase.__init__(self, name, label, None, text_section, data_section)
+        self.label = "var_" + label
+        self.text_output = "%s\n dta a(const),a(%s)\n" % (self.label, label)
+        if size:
+            self.data_output = "%s equ *\n org *+%d\n" % (label, 2*size)
+        else:
+            self.data_output = "%s equ *\n" % label
 
 #####
 
@@ -250,7 +277,8 @@ class Forth:
         self.words = Words()
         self.items = []
         self.sections = sections
-        self.section = "code"
+        self.text_section = "text"
+        self.data_section = "data"
         self.stack = []
         self.do_loop_stack = []
         self.int_prog = re.compile("-?[0-9]+")
@@ -323,12 +351,14 @@ class Forth:
         token = self.next()
         if token == ":":
             token = self.next()
-            self.word = Word(token.text, self.section, label=token.canon())
+            self.word = Word(token.text, self.text_section, label=token.canon())
             self.set_state("compile")
         elif token == "[code]":
             self.items.append(self.parse_code())
-        elif token == "[section]":
-            self.parse_section()
+        elif token == "[text-section]":
+            self.text_section = self.parse_section()
+        elif token == "[data-section]":
+            self.data_section = self.parse_section()
         elif token == "variable":
             self.parse_variable(1)
         elif token == "2variable":
@@ -370,7 +400,7 @@ class Forth:
             self.push(x1 / x2)
         elif token == "]":
             self.word.add("lit")
-            self.word.add(str(self.pop(token)))
+            self.word.add(self.pop(token).output(self.text_section))
             self.set_state("compile")
         elif self.isnumber(token):
             self.push(self.tonumber(token.text))
@@ -485,50 +515,42 @@ class Forth:
             self.input.mark_end()
             token = self.next()
             if token == "[end-code]":
-                return Code(self.input.marked(), self.section)
+                return Code(self.input.marked(), self.text_section)
 
     def parse_section(self):
         token = self.next()
-        self.section = token.text
+        return token.text
 
     def parse_variable(self, size):
         token = self.next()
         name = token.text
         label = token.canon()
-        value = "var_" + token.canon()
-        word = Constant(name, label, value, self.section)
+        word = Variable(name, label, size, self.text_section, self.data_section)
         self.add_word(word)
-        if size == 1:
-            self.items.append(Code("\n%s\n dta a(0)\n" % value, "data"))
-        elif size == 2:
-            self.items.append(Code("\n%s\n dta a(0),a(0)\n" % value, "data"))
 
     def parse_constant(self, token):
         token = self.next()
         num = self.pop(token)
-        word = Constant(token.text, token.canon(), num, self.section)
+        word = Constant(token.text, token.canon(), num, self.text_section, self.data_section)
         self.add_word(word)
 
     def parse_create(self):
         token = self.next()
         name = token.text
         label = token.canon()
-        value = "var_" + token.canon()
-        word = Constant(name, label, value, self.section)
+        word = Variable(name, label, 0, self.text_section, self.data_section)
         self.add_word(word)
-        self.items.append(Code("\n%s" % value, "data"))
 
     def parse_allot(self, token):
         count = self.pop(token)
-        zeros = ",".join(["0"] * count)
-        self.items.append(Code("\n dta %s" % zeros, "data"))
+        self.items.append(Code("\n org *+%d" % count, self.data_section))
 
     def parse_comma(self, token):
-        item = Code("\n dta a(%d)" % self.pop(token), "data")
+        item = Code("\n dta a(%d)" % self.pop(token), self.data_section)
         self.items.append(item)
 
     def parse_c_comma(self, token):
-        item = Code("\n dta %d" % self.pop(token), "data")
+        item = Code("\n dta %d" % self.pop(token), self.data_section)
         self.items.append(item)
 
     def parse_comma_doublequote(self):
@@ -539,7 +561,7 @@ class Forth:
             if token.endswith('"'):
                 self.input.mark_end()
                 text = self.input.marked()[1:-1]
-                item = Code("\n dta %d,c'%s'" % (len(text), text), "data")
+                item = Code("\n dta %d,c'%s'" % (len(text), text), self.data_section)
                 self.items.append(item)
                 break
 
@@ -560,7 +582,7 @@ class Forth:
                     count = "%d," % len(text)
                 else:
                     count = ""
-                item = Code("\n dta %sd'%s'%s" % (count, text, inverse), "data")
+                item = Code("\n dta %sd'%s'%s" % (count, text, inverse), self.data_section)
                 self.items.append(item)
                 break
 
@@ -578,15 +600,15 @@ class Forth:
             raise StackNotEmpty(self.input.line, self.input.column)
         section_outputs = []
         for section in self.sections:
-            item_outputs = map(str, filter(lambda i: i.section == section, self.items))
             section_outputs.append("; section %s\n" % section)
+            item_outputs = map(lambda i: i.output(section), self.items)
             section_outputs.append("".join(item_outputs))
         return "\n".join(section_outputs)
 
 #####
 
 boot_text = """
-[section] boot
+[text-section] boot
 
 [code]
 ip     equ $80
@@ -764,7 +786,7 @@ until_end
 """
 
 basewords_text = """
-[section] code
+[text-section] code
 
 : drop
 [code]
@@ -1790,7 +1812,7 @@ m_star_done
 """
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--sections", "-s", metavar="STR", default="init,boot,data,code")
+parser.add_argument("--sections", "-s", metavar="STR", default="init,boot,data,text")
 parser.add_argument("--pstack-bottom", "-p", metavar="ADDR", default="$600")
 parser.add_argument("--pstack-size", "-S", metavar="NUM", default=256, type=int)
 parser.add_argument("file", metavar="FILE")
