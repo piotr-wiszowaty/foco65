@@ -1685,6 +1685,108 @@ plus_loop_end
  ror pstack,x
  jmp next
 [end-code] ;
+
+: m*        ( n1 n2 -- d-prod )
+[label] m_star
+[code]
+ ; z := n2
+ lda pstack,x
+ sta z
+ lda pstack+1,x
+ sta z+1
+ ; w := n1
+ lda pstack+2,x
+ sta w
+ lda pstack+3,x
+ sta w+1
+ ; save sign
+ eor z+1
+ sta cntr+1
+ ; abs(n1)
+ lda w+1
+ bpl m_star_n1_plus
+ lda w
+ eor #$FF
+ clc
+ adc #1
+ sta w
+ lda w+1
+ eor #$FF
+ adc #0
+ sta w+1
+m_star_n1_plus
+ ; abs(n2)
+ lda z+1
+ bpl m_star_n2_plus
+ lda z
+ eor #$FF
+ clc
+ adc #1
+ sta z
+ lda z+1
+ eor #$FF
+ adc #0
+ sta z+1
+m_star_n2_plus
+ ; clear result
+ lda #0
+ sta tmp+0
+ sta tmp+1
+ sta tmp+2
+ sta tmp+3
+ ; tmp := w * z
+ ldy #16
+m_star_loop
+ lsr w+1
+ ror w
+ bcc m_star_next
+ lda z
+ clc
+ adc tmp+2
+ sta tmp+2
+ lda z+1
+ adc tmp+3
+ sta tmp+3
+m_star_next
+ clc
+ ror tmp+3
+ ror tmp+2
+ ror tmp+1
+ ror tmp+0
+ dey
+ bne m_star_loop
+ ; apply sign
+ lda cntr+1
+ bpl m_star_done
+ lda tmp+0
+ eor #$FF
+ clc
+ adc #1
+ sta tmp+0
+ lda tmp+1
+ eor #$FF
+ adc #0
+ sta tmp+1
+ lda tmp+2
+ eor #$FF
+ adc #0
+ sta tmp+2
+ lda tmp+3
+ eor #$FF
+ adc #0
+ sta tmp+3
+m_star_done
+ ; push result on the stack
+ lda tmp+0
+ sta pstack+2,x
+ lda tmp+1
+ sta pstack+3,x
+ lda tmp+2
+ sta pstack+0,x
+ lda tmp+3
+ sta pstack+1,x
+ jmp next
+[end-code] ;
 """
 
 parser = argparse.ArgumentParser()
