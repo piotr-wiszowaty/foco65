@@ -172,7 +172,8 @@ class Word:
     def output(self, section):
         if self.used and self.section == section:
             if self.code:
-                return "%s\n dta a(*+2)\n%s\n" % (self.label, self.code)
+                cout = self.code.output(section)
+                return "%s\n dta a(*+2)\n%s\n" % (self.label, cout)
             else:
                 s = "\n".join(map(lambda l: " dta a(%s)" % l, self.thread))
                 return "%s\n%s\n\n" % (self.label, s)
@@ -400,7 +401,12 @@ class Forth:
             self.push(x1 / x2)
         elif token == "]":
             self.word.add("lit")
-            self.word.add(self.pop(token).output(self.text_section))
+            tos = self.pop(token)
+            if isinstance(tos, int):
+                txt = str(tos)
+            else:
+                txt = tos.output(self.text_section)
+            self.word.add(txt)
             self.set_state("compile")
         elif self.isnumber(token):
             self.push(self.tonumber(token.text))
@@ -786,7 +792,7 @@ until_end
 """
 
 basewords_text = """
-[text-section] code
+[text-section] text
 
 : drop
 [code]
