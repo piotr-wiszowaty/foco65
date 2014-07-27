@@ -80,12 +80,17 @@ $BA98 \ hexadecimal number
 ### Word definitions
 
 Syntax:
+
 `:` _name_ *[* `[label]` _asm-label_ *]* _words_ `;`
+
 or:
+
 `:` _name_
 *[* `[label]` _asm-label_ *]*
 `[code]`
+
 ; inline-assembly
+
 `[end-code]` `;`
 
 Examples:
@@ -109,38 +114,49 @@ Examples:
 ### Data declarations
 
 One-cell variable:
+
 `variable` _name_
 
 Two-cell variable:
+
 `2variable` _name_
 
 Assembly label at current program counter:
+
 `create` _name_
 
 Compile a one-cell value:
+
 _value_ `,`
 
 Compile a one-byte value:
+
 _value_ `c,`
 
 Allocate a byte-array:
+
 _length_ `allot`
 
 Allocate Atari XL/XE Antic counted string:
+
 `,'` _text_`'`
 
 Allocate ASCII counted string:
+
 `,"` _text_`"`
 
 Allocate Atari XL/XE Antic string:
+
 `'` _text_`'`
 
 Allocate counted ASCII string:
+
 `"` _text_`"`
 
 ### Constants
 
 Syntax:
+
 _value_ `constant` _name_
 
 Example:
@@ -151,15 +167,21 @@ $230 constant dladr
 ### Inline assembly blocks
 
 Syntax:
+
 `[code]`
+
 _; assembly code_
+
 `[end-code]`
 
 ### Compiler directives
 
 Syntax:
+
 `[text-section]` _name_
+
 or:
+
 `[data-section]` _name_
 
 Words
