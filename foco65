@@ -400,23 +400,17 @@ class Forth:
             x1 = self.pop(token)
             self.push(x1 / x2)
         elif token == "]":
-            self.word.add("lit")
-            tos = self.pop(token)
-            if isinstance(tos, int):
-                txt = str(tos)
-            else:
-                txt = tos.output(self.text_section)
-            self.word.add(txt)
             self.set_state("compile")
         elif self.isnumber(token):
             self.push(self.tonumber(token.text))
         elif token is not None:
             word = self.words.find(token.text)
             if word is not None:
+                word.used = True
                 if isinstance(word, Constant):
                     self.push(self.tonumber(word.value))
                 else:
-                    raise ParseError("not a constant '%s'" % token, token.line, token.column)
+                    self.push(word.name)
             else:
                 raise UnknownWord(token)
 
@@ -479,6 +473,16 @@ class Forth:
             target1.update(word.ip())
         elif token == "[":
             self.set_state("interpret")
+        elif token == "literal":
+            self.word.add("lit")
+            tos = self.pop(token)
+            if isinstance(tos, int):
+                txt = str(tos)
+            elif isinstance(tos, str):
+                txt = tos
+            else:
+                txt = tos.output(self.text_section)
+            self.word.add(txt)
         elif token == "do":
             word.add("do", "do")
             self.push(word.ip())
@@ -552,7 +556,7 @@ class Forth:
         self.items.append(Code("\n org *+%d" % count, self.data_section))
 
     def parse_comma(self, token):
-        item = Code("\n dta a(%d)" % self.pop(token), self.data_section)
+        item = Code("\n dta a(%s)" % self.pop(token), self.data_section)
         self.items.append(item)
 
     def parse_c_comma(self, token):
