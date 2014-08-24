@@ -1469,6 +1469,50 @@ d_equ_f
  jmp next
 [end-code] ;
 
+: 2drop
+[label] two_drop
+[code]
+ inx
+ inx
+ inx
+ inx
+ jmp next
+[end-code] ;
+
+: 2dup
+[label] two_dup
+[code]
+ lda pstack+3,x
+ dex
+ sta pstack,x
+ lda pstack+3,x
+ dex
+ sta pstack,x
+ lda pstack+3,x
+ dex
+ sta pstack,x
+ lda pstack+3,x
+ dex
+ sta pstack,x
+ jmp next
+[end-code] ;
+
+: 2swap
+[label] two_stap
+[code]
+ ldy pstack+3,x
+ lda pstack+1,x
+ sta pstack+3,x
+ tya
+ sta pstack+1,x
+ ldy pstack+2,x
+ lda pstack+0,x
+ sta pstack+2,x
+ tya
+ sta pstack+0,x
+ jmp next
+[end-code] ;
+
 : sp
 [code]
  txa
