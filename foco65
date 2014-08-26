@@ -621,12 +621,12 @@ boot_text = """
 [text-section] boot
 
 [code]
-ip     equ $80
-w      equ $82
-z      equ $84
-cntr   equ $86
-tmp    equ $88
-tmp2   equ $8A
+ip     equ $18
+w      equ $1A
+z      equ $1C
+cntr   equ $1E
+tmp    equ $15
+tmp2   equ $3D
 pstack equ %(pstack_bottom)s
 
 boot
