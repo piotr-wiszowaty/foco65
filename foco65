@@ -805,6 +805,17 @@ basewords_text = """
  jmp next
 [end-code] ;
 
+: nip
+[code]
+ lda pstack,x
+ sta pstack+2,x
+ inx
+ lda pstack,x
+ sta pstack+2,x
+ inx
+ jmp next
+[end-code] ;
+
 : while
 [code]
  lda pstack,x
@@ -1027,6 +1038,48 @@ cmove_loop_2
  cpy cntr
  bne cmove_loop_2
 cmove_done
+ jmp next
+[end-code] ;
+
+: fill      ( c-addr u c -- )
+[code]
+ lda pstack,x
+ inx
+ sta w
+ inx
+ lda pstack,x
+ inx
+ sta cntr
+ lda pstack,x
+ inx
+ sta cntr+1
+ lda pstack,x
+ inx
+ sta z
+ lda pstack,x
+ inx
+ sta z+1
+ ldy #0
+ lda cntr+1
+ beq fill_tail
+ lda w
+fill_loop_1
+ sta (z),y
+ iny
+ bne fill_loop_1
+ inc z+1
+ dec cntr+1
+ bne fill_loop_1
+fill_tail
+ lda cntr
+ beq fill_done
+ lda w
+fill_loop_2
+ sta (z),y
+ iny
+ dec cntr
+ bne fill_loop_2
+fill_done
  jmp next
 [end-code] ;
 
