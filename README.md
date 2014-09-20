@@ -149,7 +149,7 @@ Allocate Atari XL/XE Antic string:
 
 `'` _text_`'`
 
-Allocate counted ASCII string:
+Allocate ASCII string:
 
 `"` _text_`"`
 
