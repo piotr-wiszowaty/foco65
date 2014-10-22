@@ -1761,10 +1761,14 @@ plus_loop_end
  txa
  tay
  tsx
- lda $100+3,x   ; index:hi
+ inx
+ inx
+ inx
+ lda $100,x     ; index:hi
  dey
  sta pstack,y
- lda $100+4,x   ; index:lo
+ inx
+ lda $100,x     ; index:lo
  dey
  sta pstack,y
  tya
@@ -1777,10 +1781,18 @@ plus_loop_end
  txa
  tay
  tsx
- lda $100+7,x   ; index:hi
+ inx
+ inx
+ inx
+ inx
+ inx
+ inx
+ inx
+ lda $100,x     ; index:hi
  dey
  sta pstack,y
- lda $100+8,x   ; index:lo
+ inx
+ lda $100,x     ; index:lo
  dey
  sta pstack,y
  tya
