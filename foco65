@@ -563,15 +563,19 @@ class Forth:
         item = Code("\n dta %d" % self.pop(token), self.data_section)
         self.items.append(item)
 
-    def parse_comma_doublequote(self):
-        # allocate ASCII counted string
+    def parse_comma_doublequote(self, counted):
+        # allocate ASCII string
         self.input.mark_start()
         while True:
             token = self.next()
             if token.endswith('"'):
                 self.input.mark_end()
                 text = self.input.marked()[1:-1]
-                item = Code("\n dta %d,c'%s'" % (len(text), text), self.data_section)
+                if counted:
+                    count = "%d," % len(text)
+                else:
+                    count = ""
+                item = Code("\n dta %sc'%s'" % (count, text), self.data_section)
                 self.items.append(item)
                 break
 
