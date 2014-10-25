@@ -373,7 +373,9 @@ class Forth:
         elif token == "c,":
             self.parse_c_comma(token)
         elif token == ',"':
-            self.parse_comma_doublequote()
+            self.parse_comma_doublequote(True)
+        elif token == '"':
+            self.parse_comma_doublequote(False)
         elif token == ",'":
             self.parse_comma_quote(True)
         elif token == "'":
