@@ -191,7 +191,7 @@ Words
 `+loop` `lshift` `<=` `<` `>=` `>` `-` `+` `or` `over` `rshift` `rsp` `sp` `swap` `unloop` `u<` `u>` `while` `<>`
 `=` `!` `[` `]` `[code]` `[end-code]` `cell` `cells` `not` `[text-section]` `[data-section]`
 `variable` `2variable` `constant` `create` `,` `c,` `,'` `'` `,"` `"` `allot`
-`lit` `\` `(` `recursive` `[label]` `*` `/` `u*`
+`lit` `\` `(` `recursive` `[label]` `*` `/` `m*`
 
 Usage
 -----
