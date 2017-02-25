@@ -255,7 +255,7 @@ class BranchTarget:
 class Words:
     def __init__(self):
         self.lst = []
-        self.aliases = {"cells": "2*", "cell": "2*", "not": "0="}
+        self.aliases = {"cells": "2*", "cell": "2+", "not": "0="}
 
     def __iter__(self):
         return iter(self.lst)
@@ -397,6 +397,9 @@ class Forth:
         elif token == "cells":
             x = self.pop(token)
             self.push(2 * x)
+        elif token == "cell":
+            x = self.pop(token)
+            self.push(x + 2)
         elif token == "/":
             x2 = self.pop(token)
             x1 = self.pop(token)
@@ -977,6 +980,19 @@ while_end
  sta pstack,x
  lda pstack+1,x
  sbc #0
+ sta pstack+1,x
+ jmp next
+[end-code] ;
+
+: 2+
+[label] two_plus
+[code]
+ clc
+ lda #2
+ adc pstack,x
+ sta pstack,x
+ lda #0
+ adc pstack+1,x
  sta pstack+1,x
  jmp next
 [end-code] ;
