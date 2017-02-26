@@ -1,0 +1,66 @@
+\ Forth-Word, um ein Zeichen
+\ auf dem Bildschirm auszugeben
+: emit ( n -- )
+    [code]
+    jmp emit2
+chout
+    tax        ; A-Register sichern
+    lda $E407  ; Aus dem E: Handler
+    pha        ; die OS-Routine
+    lda $E406  ; laden und auf den
+    pha        ; Stack legen
+    txa        ; A-Register wiederherstellen
+    rts        ; OS-Routine anspringen
+emit2
+    lda pstack,x  ; Zeichen vom Stack laden
+    inx           ; Steck-Zeiger anpassen
+    inx           ;
+    stx tmp       ; X-Register sichern 
+    jsr chout     ; Zeichen ausgeben
+    ldx tmp       ; X-Reg. wiederherstellen
+    jmp next      ; naechstes Forth-Wort
+    [end-code]
+;
+
+\ Zeichen von OS lesen
+: key ( -- n )
+    [code]
+    jmp key2
+getkey
+    lda $E425   ; Aus dem K:-Handler
+    pha         ; die OS-Routine 
+    lda $E424   ; laden und auf den
+    pha         ; Stack legen
+    rts         ; Routine aufrufen
+key2
+    jsr getkey    ; Tastatur abfragen
+    dex           ; Stack-Zeiger anpassen
+    sta pstack,x  ; Zeichen auf den Stack legen
+    lda #0        ; High-Byte = 0
+    dex           ; Stack-Zeiger anpassen
+    sta pstack,x  ; auf den Stack legen
+    jmp next      ; naechstes Forth-Wort
+    [end-code]
+;
+
+\ Forth-Wort um die Laenge und die
+\ Adresse einer Zeichenkette mit
+\ Laengenbyte auf den Stack zu
+\ legen
+: count ( addr -- addr len )
+    dup c@ swap 1+ swap
+;
+
+\ eine Zeichenkette an Adresse "addr"
+\ mit Laenge "len" auf dem Bildschirm
+\ ausgeben
+: type ( addr len -- )
+    0 do dup i + c@ emit loop drop
+;
+
+\ über DOSVEC wieder in das DOS springen
+: dos
+    [code]
+    jmp ($A)
+    [end-code]
+;

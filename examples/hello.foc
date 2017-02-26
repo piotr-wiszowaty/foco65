@@ -1,0 +1,22 @@
+[text-section] init
+
+[code]
+ org $2000  ; Startadresse des Programms
+[end-code]
+
+[text-section] text
+\ Der auszugebende Text
+create hello ," Hello World"
+
+[include] "lib/core.foc"
+
+\ Hauptprogramm
+: main
+    hello count type \ Text ausgeben
+    key   \ auf Tastendruck warten
+    dos   \ in das DOS springen
+;
+
+[code]
+ run boot \ Programm-Start anspringen (XASM)
+[end-code]
