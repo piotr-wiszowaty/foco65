@@ -1,66 +1,69 @@
-\ Forth-Word, um ein Zeichen
-\ auf dem Bildschirm auszugeben
+( Forth Words from the CORE word set                   )
+( see http://www.forth200x.org/documents/forth16-1.pdf )
+
+\ 6.1.1320 EMIT 
+\ print TOS as character on screen
 : emit ( n -- )
     [code]
-    jmp emit2
-chout
-    tax        ; A-Register sichern
-    lda $E407  ; Aus dem E: Handler
-    pha        ; die OS-Routine
-    lda $E406  ; laden und auf den
-    pha        ; Stack legen
-    txa        ; A-Register wiederherstellen
-    rts        ; OS-Routine anspringen
-emit2
-    lda pstack,x  ; Zeichen vom Stack laden
-    inx           ; Steck-Zeiger anpassen
+    lda pstack,x  ; load char from stack
+    inx           ; adjust stack pointer
     inx           ;
-    stx tmp       ; X-Register sichern 
-    jsr chout     ; Zeichen ausgeben
-    ldx tmp       ; X-Reg. wiederherstellen
+    stx tmp       ; save stack pointer
+    jsr do_ec     ; jump to OS print char function
+    ldx tmp       ; restore stack pointer
     jmp next      ; naechstes Forth-Wort
-    [end-code]
-;
 
-\ Zeichen von OS lesen
+do_ec             ; indirect jump to Atari OS
+    tax           ; function to print char
+    lda $E407     ; on screen
+    pha        
+    lda $E406  
+    pha
+    txa
+    rts
+[end-code] ;
+
+\ 6.1.1750 KEY
+\ read one character from keyboard
+\ word waits for keypress
 : key ( -- n )
-    [code]
-    jmp key2
-getkey
-    lda $E425   ; Aus dem K:-Handler
-    pha         ; die OS-Routine 
-    lda $E424   ; laden und auf den
-    pha         ; Stack legen
-    rts         ; Routine aufrufen
-key2
-    jsr getkey    ; Tastatur abfragen
-    dex           ; Stack-Zeiger anpassen
-    sta pstack,x  ; Zeichen auf den Stack legen
-    lda #0        ; High-Byte = 0
-    dex           ; Stack-Zeiger anpassen
-    sta pstack,x  ; auf den Stack legen
-    jmp next      ; naechstes Forth-Wort
-    [end-code]
-;
+[code]
+    lda #0
+    dex           ; create space on stack
+    sta pstack,x  ; clear high-byte 
+    stx w         ; save stack pointer
+    jsr do_gc     ; jump to OS routine to read key
+    ldx w         ; restore stack pointer
+    dex           ; create space for low byte
+    sta pstack,x  ; store key value in low byte
+    jmp next      ; next Forth word
 
-\ Forth-Wort um die Laenge und die
-\ Adresse einer Zeichenkette mit
-\ Laengenbyte auf den Stack zu
-\ legen
-: count ( addr -- addr len )
-    dup c@ swap 1+ swap
-;
+do_gc             ; indirect jump to Atari OS 
+    lda $E425     ; Routine to read char from
+    pha           : keyboard
+    lda $E424
+    pha
+    rts
+[end-code] ;
 
-\ eine Zeichenkette an Adresse "addr"
-\ mit Laenge "len" auf dem Bildschirm
-\ ausgeben
-: type ( addr len -- )
-    0 do dup i + c@ emit loop drop
-;
+\ 6.1.0980 COUNT
+\ Return the character string specification for the
+\ counted string stored at c-addr1. c-addr2 is the
+\ address of the first character after c-addr1.
+\ u is the contents of the character at c-addr1,
+\ which is the length in characters of the string at
+\ c-addr2.
+: count ( c-addr1 -- c-addr2 u )
+  dup c@ swap 1+ swap ;
 
-\ über DOSVEC wieder in das DOS springen
+\ 6.1.2310 TYPE
+\ If u is greater than zero, display the character
+\ string specified by c-addr and u.
+: type ( c-addr u -- )
+    0 do dup i + c@ emit loop drop ;
+
+\ Leave program and enter DOS via DOSVEC ($0A)
 : dos
     [code]
-    jmp ($A)
-    [end-code]
-;
+    jmp ($0A)
+    [end-code] ;

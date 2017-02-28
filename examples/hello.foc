@@ -1,22 +1,21 @@
 [text-section] init
 
 [code]
- org $2000  ; Startadresse des Programms
+ org $2000  ; start address of program
 [end-code]
 
 [text-section] text
-\ Der auszugebende Text
-create hello ," Hello World"
+create hello ," Hello World" \ the printable text
 
 [include] "lib/core.foc"
 
 \ Hauptprogramm
 : main
-    hello count type \ Text ausgeben
-    key   \ auf Tastendruck warten
-    dos   \ in das DOS springen
+    hello count type \ print the text on screen
+    key              \ wait for keypress 
+    dos              \ jump to DOS
 ;
 
 [code]
- run boot \ Programm-Start anspringen (XASM)
+ run boot  ; set the RUNVEC to start program 
 [end-code]
