@@ -1972,8 +1972,8 @@ with open(args.file, "rt") as f:
 f = Forth(args.sections.split(","))
 
 try:
-    f.parse_input(Input(boot_text % boot_params), "boot_text % boot_params")
-    f.parse_input(Input(basewords_text), "basewords_text")
+    f.parse_input(Input(boot_text % boot_params), "foco65(boot_text)")
+    f.parse_input(Input(basewords_text), "foco65(basewords_text)")
     f.parse_input(Input(text), args.file)
     print f.generate_output()
 except (ParseError, StackUnderflow, StackNotEmpty) as e:
