@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
 
 # foco65
 # Copyright (C) 2014  Piotr Wiszowaty
@@ -23,42 +23,49 @@ import sys
 #####
 
 class StackUnderflow(Exception):
-    def __init__(self, text, line, column):
+    def __init__(self, text, filename, line, column):
+        self.filename = filename
         self.text = text
         self.line = line
         self.column = column
 
     def __str__(self):
-        return "stack underflow (%d,%d): %s" % (self.line, self.column, self.text)
+        return "stack underflow (%s,%d,%d): %s" % (self.filename, self.line, self.column, self.text)
 
 
 class StackNotEmpty(Exception):
-    def __init__(self, line, column):
+    def __init__(self, filename, line, column):
+        self.filename = filename
         self.line = line
         self.column = column
 
     def __str__(self):
-        return "stack not empty (%d,%d)" % (self.line, self.column)
+        return "stack not empty (%s,%d,%d)" % (self.filename, self.line, self.column)
 
 
 class ParseError(Exception):
-    def __init__(self, message, line, column):
+    def __init__(self, message, filename, line, column):
         self.message = message
         self.line = line
         self.column = column
+        self.filename = filename
 
     def __str__(self):
-        return "%s at line %d column %d" % (self.message, self.line, self.column)
+        return "%s at line %d column %d in file %s" % (self.message, self.line, self.column, self.filename)
 
 
 class UnknownWord(ParseError):
-    def __init__(self, token):
-        ParseError.__init__(self, "unknown word '%s'" % token.text, token.line, token.column)
+    def __init__(self, filename, token):
+        ParseError.__init__(self, "unknown word '%s'" % token.text, filename, token.line, token.column)
 
 
 class UnexpectedEndOfStream(ParseError):
-    def __init__(self, line, column):
-        ParseError.__init__(self, "unexpected end of input", line, column)
+    def __init__(self, filename, line, column):
+        ParseError.__init__(self, "unexpected end of input", filename, line, column)
+
+class NoSuchFile(ParseError):
+    def __init__(self, filename, token):
+        ParseError.__init__(self, "No such include file '%s'" % token.text, filename, token.line, token.column)
 
 #####
 
@@ -116,7 +123,7 @@ class Input:
 
     def next_char(self):
         if self.end():
-            raise UnexpectedEndOfStream(self.line, self.column)
+            raise UnexpectedEndOfStream(self.current_file_name, self.line, self.column)
         c = self.text[self.offset]
         self.offset += 1
         if c in self.EOL:
@@ -285,13 +292,14 @@ class Forth:
         self.int_prog = re.compile("-?[0-9]+")
         self.hex_prog = re.compile("\$[0-9A-Fa-f]+")
         self.state = None
+        self.inputs = []
 
     def push(self, item):
         self.stack.append(item)
 
     def pop(self, token):
         if not self.stack:
-            raise StackUnderflow(token.text, token.line, token.column)
+            raise StackUnderflow(token.text, self.current_file_name, token.line, token.column)
         else:
             return self.stack.pop()
 
@@ -303,7 +311,7 @@ class Forth:
 
     def pop_do_loop(self, token):
         if not self.do_loop_stack:
-            raise StackUnderflow(token.text, token.line, token.column)
+            raise StackUnderflow(token.text, self.current_file_name, token.line, token.column)
         else:
             return self.do_loop_stack.pop()
 
@@ -339,8 +347,9 @@ class Forth:
     def set_state(self, state):
         self.state = state
 
-    def parse_input(self, input):
+    def parse_input(self, input, current_file_name):
         self.input = input
+        self.current_file_name = current_file_name
         self.set_state("interpret")
         while not self.input.end():
             if self.state == "interpret":
@@ -354,6 +363,17 @@ class Forth:
             token = self.next()
             self.word = Word(token.text, self.text_section, label=token.canon())
             self.set_state("compile")
+        elif token == "[include]":
+            token = self.next();
+            include_file_name = token.text.replace('"', '')
+            try:
+                self.inputs.append((self.input, self.current_file_name))
+                with open(include_file_name, "rt") as f:
+                    self.parse_input(Input(f.read()), include_file_name)
+                self.input, self.current_file_name = self.inputs.pop()
+            except IOError:
+                raise NoSuchFile(self.current_file_name, token)
+
         elif token == "[code]":
             self.items.append(self.parse_code())
         elif token == "[text-section]":
@@ -414,11 +434,11 @@ class Forth:
                 else:
                     self.push(word.name)
             else:
-                raise UnknownWord(token)
+                raise UnknownWord(self.current_file_name, token)
 
     def compile(self, word):
         if self.input.end():
-            raise UnexpectedEndOfStream(self.input.line, self.input.column)
+            raise UnexpectedEndOfStream(self.current_file_name, self.input.line, self.input.column)
         token = self.next()
         if token == ";":
             word.add("exit")
@@ -519,7 +539,7 @@ class Forth:
                     word.add("lit")
                     word.add(token.text)
                 else:
-                    raise UnknownWord(token)
+                    raise UnknownWord(self.current_file_name, token)
 
     def parse_code(self):
         self.input.mark_start()
@@ -613,7 +633,7 @@ class Forth:
     def generate_output(self):
         self.filter_used_words("main")
         if self.stack:
-            raise StackNotEmpty(self.input.line, self.input.column)
+            raise StackNotEmpty(self.current_file_name, self.input.line, self.input.column)
         section_outputs = []
         for section in self.sections:
             section_outputs.append("; section %s\n" % section)
@@ -1952,9 +1972,9 @@ with open(args.file, "rt") as f:
 f = Forth(args.sections.split(","))
 
 try:
-    f.parse_input(Input(boot_text % boot_params))
-    f.parse_input(Input(basewords_text))
-    f.parse_input(Input(text))
+    f.parse_input(Input(boot_text % boot_params), "foco65(boot_text)")
+    f.parse_input(Input(basewords_text), "foco65(basewords_text)")
+    f.parse_input(Input(text), args.file)
     print f.generate_output()
 except (ParseError, StackUnderflow, StackNotEmpty) as e:
     sys.stderr.write("error: %s\n" % str(e))
