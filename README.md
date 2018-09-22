@@ -188,7 +188,7 @@ Words
 -----
 
 `:` `@` `0=` `1-` `1+` `2/` `2*` `2@` `2!` `and` `c!` `c@` `cmove` `count` `d-` `d+` `d=` `do` `drop` `dup` `fill` `i` `j` `loop`
-`+loop` `lshift` `<=` `<` `>=` `>` `-` `+` `or` `over` `rshift` `rsp` `sp` `swap` `unloop` `u<` `u>` `while` `<>` `>r` `<r`
+`+loop` `lshift` `<=` `<` `>=` `>` `-` `+` `or` `over` `rshift` `rsp` `sp` `swap` `unloop` `u<` `u>` `while` `<>` `>r` `r>`
 `=` `!` `[` `]` `[code]` `[end-code]` `cell` `cells` `not` `[text-section]` `[data-section]`
 `variable` `2variable` `constant` `create` `,` `c,` `,'` `'` `,"` `"` `allot`
 `lit` `\` `(` `recursive` `[label]` `*` `/` `m*`
