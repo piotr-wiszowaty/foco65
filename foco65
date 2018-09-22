@@ -1954,6 +1954,32 @@ m_star_done
  sta pstack+1,x
  jmp next
 [end-code] ;
+
+: >r         ( x -- ) ( R: -- x )
+[label] to_r
+[code]
+ lda pstack+1,x
+ pha
+ lda pstack+0,x
+ pha
+ inx
+ inx
+ jmp next
+[end-code] ;
+
+: r>        ( -- x ) ( R: x -- )
+[label] r_from
+[code]
+ pla
+ tay
+ pla
+ dex
+ sta pstack,x
+ dex
+ tya
+ sta pstack,x
+ jmp next
+[end-code] ;
 """
 
 parser = argparse.ArgumentParser()
