@@ -1,7 +1,7 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 
 # foco65
-# Copyright (C) 2014,2018  Piotr Wiszowaty
+# Copyright (C) 2014,2018,2025  Piotr Wiszowaty
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -268,7 +268,7 @@ class Words:
         return iter(self.lst)
 
     def find(self, name):
-        if self.aliases.has_key(name):
+        if name in self.aliases:
             name = self.aliases[name]
         for word in self.lst:
             if word.name == name:
@@ -290,7 +290,7 @@ class Forth:
         self.stack = []
         self.do_loop_stack = []
         self.int_prog = re.compile("-?[0-9]+")
-        self.hex_prog = re.compile("\$[0-9A-Fa-f]+")
+        self.hex_prog = re.compile(r"\$[0-9A-Fa-f]+")
         self.state = None
         self.inputs = []
 
@@ -821,7 +821,7 @@ until_end
 [end-code]
 """
 
-basewords_text = """
+basewords_text = r"""
 [text-section] text
 
 : drop
@@ -2001,7 +2001,7 @@ try:
     f.parse_input(Input(boot_text % boot_params), "foco65(boot_text)")
     f.parse_input(Input(basewords_text), "foco65(basewords_text)")
     f.parse_input(Input(text), args.file)
-    print f.generate_output()
+    print(f.generate_output())
 except (ParseError, StackUnderflow, StackNotEmpty) as e:
     sys.stderr.write("error: %s\n" % str(e))
     sys.exit(1)
