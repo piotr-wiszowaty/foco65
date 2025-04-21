@@ -1109,6 +1109,44 @@ fill_done
  jmp next
 [end-code] ;
 
+: erase     ( c-addr u -- )
+[code]
+ lda pstack,x
+ inx
+ sta cntr
+ lda pstack,x
+ inx
+ sta cntr+1
+ lda pstack,x
+ inx
+ sta z
+ lda pstack,x
+ inx
+ sta z+1
+ ldy #0
+ lda cntr+1
+ beq erase_tail
+ lda #0
+erase_loop_1
+ sta (z),y
+ iny
+ bne erase_loop_1
+ inc z+1
+ dec cntr+1
+ bne erase_loop_1
+erase_tail
+ lda cntr
+ beq erase_done
+ lda #0
+erase_loop_2
+ sta (z),y
+ iny
+ dec cntr
+ bne erase_loop_2
+erase_done
+ jmp next
+[end-code] ;
+
 : dup       ( x -- x x )
 [code]
  ldy pstack,x
