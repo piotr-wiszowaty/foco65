@@ -262,7 +262,7 @@ class BranchTarget:
 class Words:
     def __init__(self):
         self.lst = []
-        self.aliases = {"cells": "2*", "cell": "2*", "not": "0="}
+        self.aliases = {"cells": "2*", "cell+": "2+", "not": "0="}
 
     def __iter__(self):
         return iter(self.lst)
@@ -417,6 +417,9 @@ class Forth:
         elif token == "cells":
             x = self.pop(token)
             self.push(2 * x)
+        elif token == "cell+":
+            x = self.pop(token)
+            self.push(x + 2)
         elif token == "/":
             x2 = self.pop(token)
             x1 = self.pop(token)
@@ -640,7 +643,7 @@ class Forth:
             item_outputs = map(lambda i: i.output(section), self.items)
             section_outputs.append("".join(item_outputs))
         return "\n".join(section_outputs)
-
+    
 #####
 
 boot_text = """
@@ -997,6 +1000,19 @@ while_end
  sta pstack,x
  lda pstack+1,x
  sbc #0
+ sta pstack+1,x
+ jmp next
+[end-code] ;
+
+: 2+
+[label] two_plus
+[code]
+ clc
+ lda #2
+ adc pstack,x
+ sta pstack,x
+ lda #0
+ adc pstack+1,x
  sta pstack+1,x
  jmp next
 [end-code] ;
@@ -2020,6 +2036,20 @@ m_star_done
 [end-code] ;
 """
 
+def resolve_includes(text):
+    i = text.find("[include]")
+    if (i > 0):
+        start = text.find('"',i+10)
+        end = text.find('"', start+1)
+        chunk1 = text[:i-1]
+        chunk2 = text[end+1:]
+        filename = text[start+1:end]
+        with open(filename, "rt") as f:
+            ntext = f.read()
+        text = resolve_includes(chunk1 + " " + ntext + " " + chunk2)
+        
+    return text
+
 parser = argparse.ArgumentParser()
 parser.add_argument("--sections", "-s", metavar="STR", default="init,boot,data,text")
 parser.add_argument("--pstack-bottom", "-p", metavar="ADDR", default="$600")
@@ -2032,6 +2062,8 @@ boot_params = {"pstack_bottom": args.pstack_bottom,
 
 with open(args.file, "rt") as f:
     text = f.read()
+
+text = resolve_includes(text)
 
 f = Forth(args.sections.split(","))
 
