@@ -187,13 +187,14 @@ or:
 Words
 -----
 
-`!` `"` `'` `(` `*` `+` `,"` `,'` `,` `-` `/` `:` `<=` `<` `<>` `<` `=` `>=`
-`>` `@` `[` `\` `]` `0=` `1+` `1-` `2!` `2*` `2/` `2@` `2drop` `2dup` `2swap`
-`2variable` `allot` `and` `c!` `c,` `c@` `cell` `cells` `cmove` `[code]`
-`constant` `count` `create` `d+` `d-` `d=` `[data-section]` `do` `drop` `dup`
-`[end-code]` `fill` `i` `j` `[label]` `lit` `+loop` `loop` `lshift` `m*` `nip`
-`not` `or` `over` `>r` `r>` `recursive` `rshift` `rsp` `sp` `swap`
-`[text-section]` `u<` `u>` `unloop` `variable` `while`
+`!` `"` `'` `[']` `(` `*` `+` `,"` `,'` `,` `-` `/` `:` `<=` `<` `<>` `<` `=`
+`>=` `>` `@` `[` `\` `]` `0=` `1+` `1-` `2!` `2*` `2/` `2@` `2drop` `2dup`
+`2swap` `2variable` `allot` `and` `c!` `c,` `c@` `cell` `cells` `cmove`
+`[code]` `constant` `count` `create` `d+` `d-` `d=` `[data-section]` `do`
+`drop` `dup` `[end-code]` `execute` `fill` `i` `j` `[label]` `lit` `+loop`
+`loop` `lshift` `m*` `nip` `not` `or` `over` `>r` `r>` `recursive` `rot` `-rot`
+`rshift` `rsp` `sp` `swap` `[text-section]` `u<` `u>` `unloop` `variable`
+`while`
 
 Usage
 -----

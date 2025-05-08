@@ -527,6 +527,14 @@ class Forth:
             word.add("lit")
             token = self.next()
             word.add(token.text, token.text)
+        elif token == "[']":
+            word.add("lit")
+            token = self.next()
+            subword = self.words.find(token.text)
+            if subword is not None:
+                word.add(subword.label, token.text)
+            else:
+                raise UnknownWord(self.current_file_name, token)
         else:
             if word.recursive and token == word.name:
                 subword = word
@@ -2015,6 +2023,114 @@ m_star_done
  sta pstack,x
  dex
  tya
+ sta pstack,x
+ jmp next
+[end-code] ;
+
+: execute   ( x -- )
+[label] execute
+[code]
+ lda pstack,x
+ inx
+ sta w
+ lda pstack,x
+ inx
+ sta w+1
+ ldy #0
+ lda (w),y
+ sta z
+ iny
+ lda (w),y
+ sta z+1
+ jmp (z)
+[end-code] ;
+
+\ w = n3
+\ z = n2
+\ tmp = n1
+: rot       ( n1 n2 n3 -- n2 n3 n1 )
+[label] rot
+[code]
+ lda pstack,x
+ inx
+ sta w
+ lda pstack,x
+ inx
+ sta w+1
+ lda pstack,x
+ inx
+ sta z
+ lda pstack,x
+ inx
+ sta z+1
+ lda pstack,x
+ inx
+ sta tmp
+ lda pstack,x
+ inx
+ sta tmp+1
+ lda z+1
+ dex
+ sta pstack,x
+ lda z
+ dex
+ sta pstack,x
+ lda w+1
+ dex
+ sta pstack,x
+ lda w
+ dex
+ sta pstack,x
+ lda tmp+1
+ dex
+ sta pstack,x
+ lda tmp
+ dex
+ sta pstack,x
+ jmp next
+[end-code] ;
+
+\ w = n3
+\ z = n2
+\ tmp = n1
+: -rot      ( n1 n2 n3 -- n3 n1 n2 )
+[label] minus_rot
+[code]
+ lda pstack,x
+ inx
+ sta w
+ lda pstack,x
+ inx
+ sta w+1
+ lda pstack,x
+ inx
+ sta z
+ lda pstack,x
+ inx
+ sta z+1
+ lda pstack,x
+ inx
+ sta tmp
+ lda pstack,x
+ inx
+ sta tmp+1
+ lda w+1
+ dex
+ sta pstack,x
+ lda w
+ dex
+ sta pstack,x
+ lda tmp+1
+ dex
+ sta pstack,x
+ lda tmp
+ dex
+ sta pstack,x
+ lda z+1
+ dex
+ sta pstack,x
+ lda z
+ dex
  sta pstack,x
  jmp next
 [end-code] ;
