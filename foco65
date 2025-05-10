@@ -1622,19 +1622,29 @@ d_equ_f
  jmp next
 [end-code] ;
 
-: 2swap
+: 2swap ( x1 x2 x3 x4 -- x3 x4 x1 x2 )
 [label] two_stap
 [code]
- ldy pstack+3,x
- lda pstack+1,x
- sta pstack+3,x
+ ldy pstack+0,x
+ lda pstack+4,x
+ sta pstack+0,x
  tya
+ sta pstack+4,x
+ ldy pstack+1,x
+ lda pstack+5,x
  sta pstack+1,x
+ tya
+ sta pstack+5,x
  ldy pstack+2,x
- lda pstack+0,x
+ lda pstack+6,x
  sta pstack+2,x
  tya
- sta pstack+0,x
+ sta pstack+6,x
+ ldy pstack+3,x
+ lda pstack+7,x
+ sta pstack+3,x
+ tya
+ sta pstack+7,x
  jmp next
 [end-code] ;
 
