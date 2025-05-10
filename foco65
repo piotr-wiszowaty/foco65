@@ -1641,11 +1641,14 @@ d_equ_f
 : sp
 [code]
  txa
- tay
+ clc
+ adc #<pstack
+ sta w
  lda #0
+ adc #>pstack
  dex
  sta pstack,x
- tya
+ lda w
  dex
  sta pstack,x
  jmp next
