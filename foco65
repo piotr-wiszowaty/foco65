@@ -1622,7 +1622,25 @@ d_equ_f
  jmp next
 [end-code] ;
 
-: 2swap ( x1 x2 x3 x4 -- x3 x4 x1 x2 )
+: 2over     ( x1 x2 x3 x4 -- x1 x2 x3 x4 x1 x2 )
+[label] two_over
+[code]
+ lda pstack+7,x
+ dex
+ sta pstack,x
+ lda pstack+7,x
+ dex
+ sta pstack,x
+ lda pstack+7,x
+ dex
+ sta pstack,x
+ lda pstack+7,x
+ dex
+ sta pstack,x
+ jmp next
+[end-code] ;
+
+: 2swap     ( x1 x2 x3 x4 -- x3 x4 x1 x2 )
 [label] two_stap
 [code]
  ldy pstack+0,x
